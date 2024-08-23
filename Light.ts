@@ -1,36 +1,27 @@
-import Device, {type DeviceTree} from './Device';
+import {haSend} from './index';
+import {getDevices, type DeviceTree} from './Device';
+import StatefulDevice from './StatefulDevice';
 
-export default class Light extends Device {
+export default class Light extends StatefulDevice {
 	brightness: number | undefined;
-	entityId: string | undefined;
 	// color
 
 	async init(): Promise<void> {
-		// Find HA entity_id: remove this when moving to zigbee2mqtt
-		const result = (await Device.haConnection?.sendMessagePromise({type: 'zha/device', ieee: this.ieee})) as any;
-		for (const entity of result.entities as {name: string; entity_id: string}[]) {
-			if (entity.entity_id.startsWith('light.')) {
-				this.entityId = entity.entity_id;
-				break;
-			}
-		}
-		// TODO: get current brightness/color from result?
-		if (!this.entityId) {
-			console.warn(`light ${this.ieee}: entity not found`, result);
-		} else {
-			console.log(`light ${this.ieee}: found entity ${this.entityId}`);
-		}
+		await this.initEntity('light.');
 	}
+
 	off(): void {
 		this.to(0.0);
 	}
+
 	on(): void {
 		this.to(1.0);
 	}
+
 	to(brightness: number): void {
-		console.debug(`light ${this.ieee}: to brightness ${brightness}`);
+		this.log(`to brightness ${brightness}`);
 		this.brightness = brightness;
-		this.haSend({
+		haSend({
 			type: 'call_service',
 			domain: 'light',
 			service: 'turn_on',
@@ -40,13 +31,19 @@ export default class Light extends Device {
 			},
 		});
 	}
+
 	isOn(): boolean {
 		return this.brightness !== undefined && this.brightness > 0.0;
 	}
+
+	onEntityState = (haState: string, haAttributes: any) => {
+		this.brightness = (haAttributes.brightness ?? 0) / 256;
+		this.log('brightness got', this.brightness);
+	};
 }
 
 export function lights(tree: DeviceTree): Light {
 	// Combined device, keep no refs!
-	const lights = findDevices(uuidOrTree, Light);
+	const lights = getDevices(tree).filter((device) => device instanceof Light) as Light[];
 	return lights[0];
 }

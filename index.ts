@@ -1,23 +1,27 @@
-import {createConnection, createLongLivedTokenAuth, subscribeEntities} from 'home-assistant-js-websocket';
-import Device, {getDevices, handleEvent} from './Device';
+import {
+	createConnection,
+	createLongLivedTokenAuth,
+	subscribeEntities,
+	type MessageBase,
+} from 'home-assistant-js-websocket';
+import {getDevices, handleEvent} from './Device';
+import {handleState} from './StatefulDevice';
 
-const auth = createLongLivedTokenAuth(
-	'http://localhost:8123',
-	'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJiNzA3NWU1MTRjNjU0ZDRjODI5YzdhMmQ5YjRlYTUwMyIsImlhdCI6MTcyMjg3Mjg2NywiZXhwIjoyMDM4MjMyODY3fQ.F5aXWM_GrWR8ao4LUaSPRaTgdNGjMwvSLWWnpC4FVJY'
-);
+const haToken = await Bun.file('./ha.token').text();
+const auth = createLongLivedTokenAuth('http://localhost:8123', haToken.trim());
 
-const connection = await createConnection({auth});
+const haConnection = await createConnection({auth});
 
 console.log('connected to HA');
 
-Device.haConnection = connection;
+export async function haSend(message: MessageBase): Promise<any> {
+	return await haConnection.sendMessagePromise(message);
+}
 
-connection.subscribeEvents((event: any) => {
+haConnection.subscribeEvents((event: any) => {
 	if (event.event_type !== 'zha_event') {
 		return;
 	}
-
-	console.log('e ', event);
 
 	const uuid = event.data?.device_ieee;
 	if (!uuid) {
@@ -28,8 +32,20 @@ connection.subscribeEvents((event: any) => {
 	handleEvent(uuid, event);
 }, 'zha_event');
 
+haConnection.subscribeEvents((event: any) => {
+	console.log('state event', event);
+}, 'state');
+
 const deviceTree = (await import('./mercatorplein68')).default;
 
-await Promise.all(getDevices(deviceTree).map((device) => device.init()));
+const allDevices = getDevices(deviceTree);
+await Promise.all(allDevices.map((device) => device.init()));
 
-console.log('initialized devices');
+console.log(`initialized ${allDevices.length} devices`);
+
+const initialStates = await haSend({type: 'get_states'});
+for (const initialState of initialStates) {
+	handleState(initialState.entity_id, initialState.state, initialState.attributes);
+}
+
+console.log('synced initial state');

@@ -1,6 +1,3 @@
-import type {Connection, MessageBase} from 'home-assistant-js-websocket';
-import {callService} from 'home-assistant-js-websocket/dist/messages.js';
-
 export type ZigbeeEvent = any;
 export type EventHandler = (event: ZigbeeEvent) => void;
 
@@ -43,13 +40,11 @@ export default class Device {
 
 	async init(): Promise<void> {}
 
-	static haConnection: Connection | undefined;
+	log(...args: any[]) {
+		console.log(`${this.constructor.name} ${this.ieee}:`, ...args);
+	}
 
-	async haSend(message: MessageBase): Promise<any> {
-		if (!Device.haConnection) {
-			console.warn('could not send, no connection');
-			return;
-		}
-		return await Device.haConnection.sendMessagePromise(message);
+	warn(...args: any[]) {
+		console.warn(`${this.constructor.name} ${this.ieee}:`, ...args);
 	}
 }
