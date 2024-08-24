@@ -1,5 +1,5 @@
-import Device from './Device';
-import {haSend} from './index';
+import ZigbeeDevice from './ZigbeeDevice';
+import {haSend} from './main';
 
 type StateHandler = (haState: string, haAttributes: any) => void;
 
@@ -13,7 +13,12 @@ export function handleState(entityId: string, haState: string, haAttributes: any
 	}
 }
 
-export default class StatefulDevice extends Device {
+export function addStateHandler(entityId: string, handler: StateHandler) {
+	entityIndex[entityId] ??= [];
+	entityIndex[entityId].push(handler);
+}
+
+export default class StatefulDevice extends ZigbeeDevice {
 	entityId: string | undefined;
 
 	// Finds relevant entity in HA for this device, and subscribes to updates
@@ -31,8 +36,9 @@ export default class StatefulDevice extends Device {
 			return;
 		}
 		this.log(`found entity ${this.entityId}`);
-		entityIndex[this.entityId] ??= [];
-		entityIndex[this.entityId].push(this.onEntityState);
+
+		this.name = this.entityId;
+		addStateHandler(this.entityId, this.onEntityState);
 	}
 
 	onEntityState = (haState: string, haAttributes: any) => {

@@ -1,11 +1,7 @@
-import {
-	createConnection,
-	createLongLivedTokenAuth,
-	subscribeEntities,
-	type MessageBase,
-} from 'home-assistant-js-websocket';
-import {getDevices, handleEvent} from './Device';
+import {createConnection, createLongLivedTokenAuth, type MessageBase} from 'home-assistant-js-websocket';
+import {getDevices} from './Device';
 import {handleState} from './StatefulDevice';
+import {handleEvent} from './ZigbeeDevice';
 
 const haToken = await Bun.file('./ha.token').text();
 const auth = createLongLivedTokenAuth('http://localhost:8123', haToken.trim());
@@ -19,26 +15,23 @@ export async function haSend(message: MessageBase): Promise<any> {
 }
 
 haConnection.subscribeEvents((event: any) => {
-	if (event.event_type !== 'zha_event') {
-		return;
-	}
-
-	const uuid = event.data?.device_ieee;
-	if (!uuid) {
-		console.log('missing device_ieee', event);
-		return;
-	}
-
+	// console.log('zha_event', event);
+	const uuid = event.data.device_ieee as string;
 	handleEvent(uuid, event);
 }, 'zha_event');
 
 haConnection.subscribeEvents((event: any) => {
-	console.log('state event', event);
-}, 'state');
+	// console.log('state_changed', event);
+	const entityId = event.data.entity_id as string;
+	const newState = event.data.new_state as {state: string; attributes: any} | null;
+	if (newState) {
+		handleState(entityId, newState.state, newState.attributes);
+	}
+}, 'state_changed');
 
-const deviceTree = (await import('./mercatorplein68')).default;
+const mercatorplein68 = (await import('./mercatorplein68')).default;
 
-const allDevices = getDevices(deviceTree);
+const allDevices = getDevices(mercatorplein68);
 await Promise.all(allDevices.map((device) => device.init()));
 
 console.log(`initialized ${allDevices.length} devices`);
@@ -49,3 +42,5 @@ for (const initialState of initialStates) {
 }
 
 console.log('synced initial state');
+
+// lights(mercatorplein68).on();

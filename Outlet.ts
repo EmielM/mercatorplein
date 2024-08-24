@@ -1,8 +1,8 @@
 import StatefulDevice from './StatefulDevice';
-import {haSend} from './index';
+import {haSend} from './main';
 
 export default class Outlet extends StatefulDevice {
-	isOn: boolean | undefined;
+	powered: boolean | undefined;
 
 	async init(): Promise<void> {
 		await this.initEntity('switch.');
@@ -10,7 +10,7 @@ export default class Outlet extends StatefulDevice {
 
 	on(): void {
 		console.debug(`outlet ${this.ieee}: on`);
-		this.isOn = true;
+		this.powered = true;
 		haSend({
 			type: 'call_service',
 			domain: 'switch',
@@ -23,7 +23,7 @@ export default class Outlet extends StatefulDevice {
 
 	off(): void {
 		console.debug(`outlet ${this.ieee}: off`);
-		this.isOn = true;
+		this.powered = true;
 		haSend({
 			type: 'call_service',
 			domain: 'switch',
@@ -35,7 +35,7 @@ export default class Outlet extends StatefulDevice {
 	}
 
 	onEntityState = (haState: string, haAttributes: any) => {
-		this.isOn = haState === 'on';
-		this.log('switch state', this.isOn);
+		this.powered = haState === 'on';
+		this.log('at state', this.powered ? 'on' : 'off');
 	};
 }

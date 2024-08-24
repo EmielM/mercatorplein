@@ -1,6 +1,6 @@
-import Device, {addEventHandler, type EventHandler} from './Device';
+import ZigbeeDevice, {addEventHandler, type EventHandler} from './ZigbeeDevice';
 
-export default class Button extends Device {
+export default class MarmitekButton extends ZigbeeDevice {
 	endpointId: number | undefined;
 
 	constructor(ieee: string, endpointId: number | undefined = undefined) {
@@ -8,15 +8,19 @@ export default class Button extends Device {
 		this.endpointId = endpointId;
 	}
 
-	get leftButton(): Button {
-		return new Button(this.ieee, 1);
+	get leftButton(): MarmitekButton {
+		return new MarmitekButton(this.ieee, 1);
 	}
-	get rightButton(): Button {
-		return new Button(this.ieee, 2);
+	get rightButton(): MarmitekButton {
+		return new MarmitekButton(this.ieee, 2);
 	}
 
 	onPress(handler: EventHandler) {
 		this.#addHandler('remote_button_short_press', handler);
+	}
+
+	onDoublePress(handler: EventHandler) {
+		this.#addHandler('remote_button_double_press', handler);
 	}
 
 	onLongPress(handler: EventHandler) {
