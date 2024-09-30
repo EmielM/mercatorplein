@@ -35,6 +35,7 @@ export default class MarmitekButton extends ZigbeeDevice {
 			if (this.endpointId !== undefined && event.data?.endpoint_id !== this.endpointId) {
 				return;
 			}
+			this.log(command);
 			handler(event);
 		});
 	}

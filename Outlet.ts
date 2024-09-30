@@ -23,7 +23,7 @@ export default class Outlet extends StatefulDevice {
 
 	off(): void {
 		console.debug(`outlet ${this.ieee}: off`);
-		this.powered = true;
+		this.powered = false;
 		haSend({
 			type: 'call_service',
 			domain: 'switch',
@@ -36,6 +36,6 @@ export default class Outlet extends StatefulDevice {
 
 	onEntityState = (haState: string, haAttributes: any) => {
 		this.powered = haState === 'on';
-		this.log('at state', this.powered ? 'on' : 'off');
+		this.log('at', this.powered ? 'on' : 'off');
 	};
 }

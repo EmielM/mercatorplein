@@ -6,6 +6,10 @@ import {handleEvent} from './ZigbeeDevice';
 const haToken = await Bun.file('./ha.token').text();
 const auth = createLongLivedTokenAuth('http://localhost:8123', haToken.trim());
 
+export function getAccessToken(): string {
+	return auth.accessToken;
+}
+
 const haConnection = await createConnection({auth});
 
 console.log('connected to HA');
@@ -21,6 +25,10 @@ haConnection.subscribeEvents((event: any) => {
 }, 'zha_event');
 
 haConnection.subscribeEvents((event: any) => {
+	if (event.data.entity_id.startsWith('sensor.')) {
+		// Lots of spam from energy sensors
+		return;
+	}
 	// console.log('state_changed', event);
 	const entityId = event.data.entity_id as string;
 	const newState = event.data.new_state as {state: string; attributes: any} | null;
@@ -43,4 +51,4 @@ for (const initialState of initialStates) {
 
 console.log('synced initial state');
 
-// lights(mercatorplein68).on();
+export default mercatorplein68;
