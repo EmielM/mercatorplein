@@ -11,6 +11,7 @@ const livingRoom = {
 	boekenkastLights: new Light('58:8e:81:ff:fe:ad:f3:14'),
 	tvSpot: new Light('68:0a:e2:ff:fe:c3:f5:45'),
 	artSpot: new Light('58:8e:81:ff:fe:41:12:2a'),
+	deskLamp: new Light('ec:1b:bd:ff:fe:31:74:04'),
 };
 const kitchen = {
 	counterButton: new IkeaButton('bc:33:ac:ff:fe:0d:28:f6'),
@@ -32,11 +33,11 @@ const office = {
 };
 
 const livingRoomScenes = new SceneController({
-	lights: [livingRoom.boekenkastLights, livingRoom.tvSpot, livingRoom.artSpot],
+	lights: [livingRoom.boekenkastLights, livingRoom.tvSpot, livingRoom.artSpot, livingRoom.deskLamp],
 	scenes: [
-		[0, 0, 0], // off
-		[0.8, {brightness: 0.8, temp: 2500}, {brightness: 0.8, temp: 2500}], // on
-		[0.4, {brightness: 0.4, temp: 2500}, {brightness: 0.4, temp: 2500}], // movie
+		[0, 0, 0, 0], // off
+		[0.8, {brightness: 0.8, temp: 2500}, {brightness: 0.8, temp: 2500}, 0.5], // on
+		[0.4, {brightness: 0.4, temp: 2500}, {brightness: 0.4, temp: 2500}, 0.25], // movie
 	],
 });
 livingRoom.curvedWallButton.leftButton.onPress(livingRoomScenes.nextScene);
@@ -46,7 +47,7 @@ const kitchenScenes = new SceneController({
 	scenes: [
 		[0, 0], // off
 		[{brightness: 0.75, rgb: [255, 193, 141]}, 0.5], // cooking
-		[{brightness: 0.5, rgb: [255, 136, 13]}, 0.3], // eating
+		[{brightness: 0.26, rgb: [255, 180, 90]}, 0.3], // eating
 	],
 });
 livingRoom.curvedWallButton.rightButton.onPress(kitchenScenes.nextScene);
@@ -65,24 +66,24 @@ hall.entrySensor.onMove(function () {
 	}
 });
 
-function toggleBed() {
-	if (bedRoom.curtain.isOpen()) {
-		bedRoom.curtain.close();
-		bedRoom.antiMusquito.on();
-	} else {
+function toggleCurtain() {
+	if (bedRoom.antiMusquito.powered) {
 		bedRoom.curtain.open();
 		bedRoom.antiMusquito.off();
+	} else {
+		bedRoom.curtain.close();
+		bedRoom.antiMusquito.on();
 	}
 }
 
 function allAsleep() {
-	lights({kitchen, livingRoom, bedRoom, hall, office}).off();
 	bedRoom.curtain.close();
 	bedRoom.antiMusquito.on();
+	lights({kitchen, livingRoom, bedRoom, hall, office}).off();
 }
 
-bedRoom.buttonEmiel.onPress(toggleBed);
-bedRoom.buttonGhis.onPress(toggleBed);
+bedRoom.buttonEmiel.onPress(toggleCurtain);
+bedRoom.buttonGhis.onPress(toggleCurtain);
 bedRoom.buttonEmiel.onDoublePress(allAsleep);
 bedRoom.buttonGhis.onDoublePress(allAsleep);
 
