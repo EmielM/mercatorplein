@@ -8,10 +8,10 @@ type RgbColor = [number, number, number]; // 0-255 per color
 export type LightTarget =
 	| number // 0 - 1.00
 	| {brightness: number; rgb: RgbColor}
-	| {brightness: number; temp: number};
+	| {brightness: number; temperature: number};
 
 export default class Light extends ZigbeeDevice {
-	entity: Entity<{brightness: number; rgb: RgbColor | null; temp: number | null}> | undefined;
+	entity: Entity<{brightness: number; rgb: RgbColor | null; temperature: number | null}> | undefined;
 
 	async init(): Promise<void> {
 		const entityId = await findZigbeeEntityId('light.', this.ieee);
@@ -19,7 +19,7 @@ export default class Light extends ZigbeeDevice {
 			this.entity = new Entity(entityId, (haState: string, haAttributes: any) => ({
 				brightness: Math.round(((haAttributes.brightness ?? 0) / 0xff) * 100) * 0.01,
 				rgb: (haAttributes.rgb_color ?? null) as RgbColor | null,
-				temp: (haAttributes.color_temp_kelvin ?? null) as number | null,
+				temperature: (haAttributes.color_temp_kelvin ?? null) as number | null,
 			}));
 		}
 	}
@@ -30,8 +30,8 @@ export default class Light extends ZigbeeDevice {
 	get rgb() {
 		return this.entity?.value?.rgb;
 	}
-	get temp() {
-		return this.entity?.value?.temp;
+	get temperature() {
+		return this.entity?.value?.temperature;
 	}
 
 	off(): void {
@@ -51,14 +51,11 @@ export default class Light extends ZigbeeDevice {
 
 		const serviceData = {} as any;
 		if (typeof target === 'object') {
-			// this.brightness = target.brightness;
 			serviceData.brightness_pct = target.brightness * 100;
 			if ('rgb' in target) {
-				// this.rgb = target.rgb;
 				serviceData.rgb_color = target.rgb;
 			} else if ('temp' in target) {
-				// this.temp = target.temp;
-				serviceData.color_temp_kelvin = target.temp;
+				serviceData.color_temp_kelvin = target.temperature;
 			}
 		} else {
 			serviceData.brightness_pct = target * 100;

@@ -42,6 +42,17 @@ const homePresence = {
 	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) => value === 'home'),
 };
 
+const allLights = lights({kitchen, livingRoom, bedRoom, hall, office});
+
+// Called nobodyHome (and not someoneHome), because if we don't know due to missing sensor data, we assume false
+const nobodyHome = new Observable<boolean>();
+function onPresenceChange() {
+	nobodyHome.set(homePresence.emiel.value === false && homePresence.ghislaine.value === false);
+}
+
+homePresence.emiel.observe(onPresenceChange);
+homePresence.ghislaine.observe(onPresenceChange);
+
 // These track the iOS focus mode
 // - https://github.com/home-assistant/iOS/issues/1899
 const asleep = {
@@ -49,12 +60,22 @@ const asleep = {
 	ghislaine: new Entity('binary_sensor.iphone_ghislaine_focus', (value) => value === 'on'),
 };
 
+function isWeekDay() {
+	// 0 is Sunday
+	const day = new Date().getDay();
+	return day >= 1 && day <= 5;
+}
+function isBetweenHours(min: number, max: number) {
+	const hours = new Date().getHours();
+	return hours >= min && hours <= max;
+}
+
 const livingRoomScenes = new SceneController({
 	lights: [livingRoom.boekenkastLights, livingRoom.tvSpot, livingRoom.artSpot, livingRoom.deskLamp],
 	scenes: [
 		[0, 0, 0, 0], // off
-		[0.8, {brightness: 0.8, temp: 2500}, {brightness: 0.8, temp: 2500}, 0.5], // on
-		[0.4, {brightness: 0.4, temp: 2500}, {brightness: 0.4, temp: 2500}, 0.25], // movie
+		[0.8, {brightness: 0.8, temperature: 2500}, {brightness: 0.8, temperature: 2500}, 0.5], // on
+		[0.4, {brightness: 0.4, temperature: 2500}, {brightness: 0.4, temperature: 2500}, 0.25], // movie
 	],
 });
 livingRoom.curvedWallButton.leftButton.onPress(livingRoomScenes.nextScene);
@@ -71,15 +92,18 @@ livingRoom.curvedWallButton.rightButton.onPress(kitchenScenes.nextScene);
 kitchen.counterButton.onPressOn(kitchenScenes.nextOnScene);
 kitchen.counterButton.onPressOff(kitchenScenes.off);
 
-hall.entrySensor.onMotion(function () {
-	if (!hall.bulb1.isOn()) {
-		hall.bulb1.to({brightness: 0.4, temp: 2500});
-		hall.bulb2.to({brightness: 0.4, temp: 2500});
-	}
+const hallLights = lights(hall);
 
-	// When coming between 16:00 and 21:00 and all living room lights are off: dimmed living room lights
-	if (isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
-		livingRoomScenes.toScene(2);
+// Someone enters (or leaves) the front door
+// - TODO: somehow find a way to not trigger this when we're leaving
+hall.entrySensor.onMotion(function () {
+	if (!hallLights.isOn()) {
+		hallLights.to({brightness: 0.4, temperature: 2500});
+
+		if (isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
+			// Dimmed lights when we arrive end of day
+			livingRoomScenes.toScene(2);
+		}
 		if (isWeekDay() && isBetweenHours(17, 19) && kitchenScenes.currentSceneIndex === 0) {
 			// Assume we want to cook
 			kitchenScenes.toScene(1);
@@ -87,46 +111,23 @@ hall.entrySensor.onMotion(function () {
 	}
 });
 
-homePresence.emiel.observe(onPresenceChange);
-homePresence.ghislaine.observe(onPresenceChange);
-
-const nobodyHome = new Observable<boolean | undefined>(undefined);
-function onPresenceChange() {
-	nobodyHome.set(homePresence.emiel.value === false && homePresence.ghislaine.value === false);
-}
-
-nobodyHome.observe((noBodyHome) => {
-	if (noBodyHome === undefined) {
-		// Unknown yet
-		return;
+const tvIsOn = new Entity('media_player.lg_webos_tv_oled55c25lb', (haState) => haState === 'on');
+tvIsOn.observe((isOn) => {
+	if (isOn) {
+		// When TV is turned on, go into
+		// TODO: this maybe a bit aggressive
+		livingRoomScenes.toScene(2);
+		if (kitchenScenes.currentSceneIndex === 1) {
+			// If kitchen lights are bright, make less bright
+			kitchenScenes.toScene(2);
+		}
+		hallLights.off();
 	}
-	console.log(noBodyHome ? 'no body home' : 'someone home');
-	if (noBodyHome) {
-		allLightsOff();
-	}
-
-	haSend({
-		type: 'call_service',
-		domain: 'switch',
-		service: noBodyHome ? 'turn_off' : 'turn_on',
-		service_data: {
-			entity_id: 'switch.roborock_s8_maxv_ultra_do_not_disturb',
-		},
-	});
 });
-
-function isWeekDay() {
-	// 0 is Sunday
-	const day = new Date().getDay();
-	return day >= 1 && day <= 5;
-}
-function isBetweenHours(min: number, max: number) {
-	const hours = new Date().getHours();
-	return hours >= min && hours <= max;
-}
 
 // Local state (consider: move to HA entity?)
 let curtainsOpen = false;
+
 function toggleCurtain() {
 	curtainsOpen = !curtainsOpen;
 	if (curtainsOpen) {
@@ -138,14 +139,10 @@ function toggleCurtain() {
 	}
 }
 
-function allLightsOff() {
-	lights({kitchen, livingRoom, bedRoom, hall, office}).off();
-}
-
 function allAsleep() {
 	bedRoom.curtain.close();
 	bedRoom.antiMusquito.on();
-	allLightsOff();
+	allLights.off();
 }
 
 bedRoom.buttonEmiel.onPress(toggleCurtain);
@@ -165,5 +162,21 @@ function asleepChanged(isAsleep: boolean | undefined) {
 }
 asleep.emiel.observe(asleepChanged);
 asleep.ghislaine.observe(asleepChanged);
+
+nobodyHome.observe((noBodyHome) => {
+	console.log(noBodyHome ? 'no body home' : 'someone home');
+	if (noBodyHome) {
+		allLights.off();
+	}
+
+	haSend({
+		type: 'call_service',
+		domain: 'switch',
+		service: noBodyHome ? 'turn_off' : 'turn_on',
+		service_data: {
+			entity_id: 'switch.roborock_s8_maxv_ultra_do_not_disturb',
+		},
+	});
+});
 
 export default {livingRoom, kitchen, hall, bedRoom, office};

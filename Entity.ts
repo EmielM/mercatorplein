@@ -16,7 +16,7 @@ export function handleEntityState(entityId: string, haState: string, haAttribute
 /**
  * Models an entity in Home Assistant, mapped to an observable state value we use on our side
  */
-export default class Entity<ValueType> extends Observable<ValueType | undefined> {
+export default class Entity<ValueType> extends Observable<ValueType> {
 	entityId: string;
 	haState: string | undefined;
 	haAttributes: any | undefined;

@@ -37,9 +37,9 @@ haConnection.subscribeEvents((event: any) => {
 	}
 }, 'state_changed');
 
-const mercatorplein68 = (await import('./mercatorplein68')).default;
+const mercatorplein = (await import('./mercatorplein')).default;
 
-const allDevices = getDevices(mercatorplein68);
+const allDevices = getDevices(mercatorplein);
 await Promise.all(allDevices.map((device) => device.init()));
 
 console.log(`initialized ${allDevices.length} devices`);
@@ -51,4 +51,4 @@ for (const initialState of initialStates) {
 
 console.log('synced initial state');
 
-export default mercatorplein68;
+export default mercatorplein;
