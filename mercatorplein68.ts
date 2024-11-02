@@ -45,8 +45,8 @@ const homePresence = {
 // These track the iOS focus mode
 // - https://github.com/home-assistant/iOS/issues/1899
 const asleep = {
-	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'off'),
-	ghislaine: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'off'),
+	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'on'),
+	ghislaine: new Entity('binary_sensor.iphone_ghislaine_focus', (value) => value === 'on'),
 };
 
 const livingRoomScenes = new SceneController({
@@ -72,8 +72,19 @@ kitchen.counterButton.onPressOn(kitchenScenes.nextOnScene);
 kitchen.counterButton.onPressOff(kitchenScenes.off);
 
 hall.entrySensor.onMotion(function () {
-	hall.bulb1.to({brightness: 0.4, temp: 2500});
-	hall.bulb2.to({brightness: 0.4, temp: 2500});
+	if (!hall.bulb1.isOn()) {
+		hall.bulb1.to({brightness: 0.4, temp: 2500});
+		hall.bulb2.to({brightness: 0.4, temp: 2500});
+	}
+
+	// When coming between 16:00 and 21:00 and all living room lights are off: dimmed living room lights
+	if (isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
+		livingRoomScenes.toScene(2);
+		if (isWeekDay() && isBetweenHours(17, 19) && kitchenScenes.currentSceneIndex === 0) {
+			// Assume we want to cook
+			kitchenScenes.toScene(1);
+		}
+	}
 });
 
 homePresence.emiel.observe(onPresenceChange);
@@ -103,6 +114,16 @@ nobodyHome.observe((noBodyHome) => {
 		},
 	});
 });
+
+function isWeekDay() {
+	// 0 is Sunday
+	const day = new Date().getDay();
+	return day >= 1 && day <= 5;
+}
+function isBetweenHours(min: number, max: number) {
+	const hours = new Date().getHours();
+	return hours >= min && hours <= max;
+}
 
 // Local state (consider: move to HA entity?)
 let curtainsOpen = false;
@@ -137,8 +158,7 @@ office.button.onPressOff(() => office.deskPower.off());
 
 function asleepChanged(isAsleep: boolean | undefined) {
 	// Whenever a transition from asleep to awake between 6:00 and 10:00, enable morning lights
-	const hours = new Date().getHours();
-	if (isAsleep === false && hours >= 6 && hours <= 10) {
+	if (isAsleep === false && isBetweenHours(6, 10)) {
 		livingRoomScenes.toScene(2);
 		kitchenScenes.toScene(2);
 	}
