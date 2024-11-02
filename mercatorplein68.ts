@@ -5,6 +5,9 @@ import MotionSensor from './MotionSensor';
 import Outlet from './Outlet';
 import SceneController from './SceneController';
 import {IkeaButton} from './IkeaButton';
+import {haSend} from './main';
+import Observable from './Observable';
+import Entity from './Entity';
 
 const livingRoom = {
 	curvedWallButton: new MarmitekButton('5c:02:72:ff:fe:05:0c:27'),
@@ -19,7 +22,9 @@ const kitchen = {
 	tableLights: new Light('ec:1b:bd:ff:fe:ad:19:65'),
 };
 const hall = {
-	entrySensor: new MotionSensor('8c:f6:81:ff:fe:f6:a1:45'),
+	entrySensor: new MotionSensor('8c:65:a3:ff:fe:3e:34:18'),
+	bulb1: new Light('04:87:27:ff:fe:8f:dd:fb'),
+	bulb2: new Light('04:87:27:ff:fe:8f:d8:d6'),
 };
 const bedRoom = {
 	curtain: new Cover('cover.192_168_178_225'),
@@ -30,6 +35,18 @@ const bedRoom = {
 const office = {
 	button: new IkeaButton('84:2e:14:ff:fe:8c:3d:c1'),
 	deskPower: new Outlet('28:db:a7:ff:fe:5f:d9:d7'),
+};
+
+const homePresence = {
+	emiel: new Entity('device_tracker.emiels_iphone', (value) => value === 'home'),
+	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) => value === 'home'),
+};
+
+// These track the iOS focus mode
+// - https://github.com/home-assistant/iOS/issues/1899
+const asleep = {
+	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'off'),
+	ghislaine: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'off'),
 };
 
 const livingRoomScenes = new SceneController({
@@ -54,20 +71,44 @@ livingRoom.curvedWallButton.rightButton.onPress(kitchenScenes.nextScene);
 kitchen.counterButton.onPressOn(kitchenScenes.nextOnScene);
 kitchen.counterButton.onPressOff(kitchenScenes.off);
 
-function isNight() {
-	const now = new Date();
-	return now.getHours() >= 22 && now.getHours() <= 6;
-}
-
-hall.entrySensor.onMove(function () {
-	if (isNight() && !lights(livingRoom).isOn() && !kitchen.counterStrip.isOn()) {
-		// Assume no one was at home
-		kitchen.counterStrip.to({brightness: 0.3, temp: 2700});
-	}
+hall.entrySensor.onMotion(function () {
+	hall.bulb1.to({brightness: 0.4, temp: 2500});
+	hall.bulb2.to({brightness: 0.4, temp: 2500});
 });
 
+homePresence.emiel.observe(onPresenceChange);
+homePresence.ghislaine.observe(onPresenceChange);
+
+const nobodyHome = new Observable<boolean | undefined>(undefined);
+function onPresenceChange() {
+	nobodyHome.set(homePresence.emiel.value === false && homePresence.ghislaine.value === false);
+}
+
+nobodyHome.observe((noBodyHome) => {
+	if (noBodyHome === undefined) {
+		// Unknown yet
+		return;
+	}
+	console.log(noBodyHome ? 'no body home' : 'someone home');
+	if (noBodyHome) {
+		allLightsOff();
+	}
+
+	haSend({
+		type: 'call_service',
+		domain: 'switch',
+		service: noBodyHome ? 'turn_off' : 'turn_on',
+		service_data: {
+			entity_id: 'switch.roborock_s8_maxv_ultra_do_not_disturb',
+		},
+	});
+});
+
+// Local state (consider: move to HA entity?)
+let curtainsOpen = false;
 function toggleCurtain() {
-	if (bedRoom.antiMusquito.powered) {
+	curtainsOpen = !curtainsOpen;
+	if (curtainsOpen) {
 		bedRoom.curtain.open();
 		bedRoom.antiMusquito.off();
 	} else {
@@ -76,10 +117,14 @@ function toggleCurtain() {
 	}
 }
 
+function allLightsOff() {
+	lights({kitchen, livingRoom, bedRoom, hall, office}).off();
+}
+
 function allAsleep() {
 	bedRoom.curtain.close();
 	bedRoom.antiMusquito.on();
-	lights({kitchen, livingRoom, bedRoom, hall, office}).off();
+	allLightsOff();
 }
 
 bedRoom.buttonEmiel.onPress(toggleCurtain);
@@ -89,5 +134,16 @@ bedRoom.buttonGhis.onDoublePress(allAsleep);
 
 office.button.onPressOn(() => office.deskPower.on());
 office.button.onPressOff(() => office.deskPower.off());
+
+function asleepChanged(isAsleep: boolean | undefined) {
+	// Whenever a transition from asleep to awake between 6:00 and 10:00, enable morning lights
+	const hours = new Date().getHours();
+	if (isAsleep === false && hours >= 6 && hours <= 10) {
+		livingRoomScenes.toScene(2);
+		kitchenScenes.toScene(2);
+	}
+}
+asleep.emiel.observe(asleepChanged);
+asleep.ghislaine.observe(asleepChanged);
 
 export default {livingRoom, kitchen, hall, bedRoom, office};

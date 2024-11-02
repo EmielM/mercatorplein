@@ -1,25 +1,22 @@
 import {haSend} from './main';
 import Device from './Device';
-import {addStateHandler} from './StatefulDevice';
+import Entity from './Entity';
 
 export default class Cover extends Device {
-	entityId: string;
-	position: number | undefined; // 0 - 1.00
+	entity: Entity<number>;
 
 	constructor(entityId: string) {
 		super();
-		this.entityId = entityId;
 		this.name = entityId;
+		this.entity = new Entity(
+			entityId,
+			(haState: string, haAttributes: any) => haAttributes.current_position * 0.01
+		);
 	}
 
-	async init(): Promise<void> {
-		addStateHandler(this.entityId, this.onEntityState);
+	get position() {
+		return this.entity.value;
 	}
-
-	onEntityState = (haState: string, haAttributes: any) => {
-		this.position = haAttributes.current_position * 0.01;
-		this.log('at position', this.position);
-	};
 
 	close(): void {
 		this.to(0.0);
@@ -30,20 +27,20 @@ export default class Cover extends Device {
 	}
 
 	to(position: number): void {
-		this.position = position;
+		this.entity.set(position);
 		this.log('to position', position);
 		haSend({
 			type: 'call_service',
 			domain: 'cover',
 			service: 'set_cover_position',
 			service_data: {
-				entity_id: this.entityId,
+				entity_id: this.entity.entityId,
 				position: position * 100,
 			},
 		});
 	}
 
 	isOpen(): boolean {
-		return this.position !== undefined && this.position > 0.0;
+		return this.entity.value !== undefined && this.entity.value > 0.0;
 	}
 }

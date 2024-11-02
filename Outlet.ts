@@ -1,41 +1,53 @@
-import StatefulDevice from './StatefulDevice';
+import Entity from './Entity';
+import Observable from './Observable';
+import ZigbeeDevice, {findZigbeeEntityId} from './ZigbeeDevice';
 import {haSend} from './main';
 
-export default class Outlet extends StatefulDevice {
-	powered: boolean | undefined;
+export default class Outlet extends ZigbeeDevice {
+	entity?: Entity<boolean>;
 
 	async init(): Promise<void> {
-		await this.initEntity('switch.');
+		const entityId = await findZigbeeEntityId('switch.', this.ieee);
+		if (entityId) {
+			this.entity = new Entity(entityId, (haState: string) => haState === 'on');
+		}
+	}
+
+	get powered() {
+		return this.entity?.value;
 	}
 
 	on(): void {
+		if (!this.entity) {
+			this.warn('missing entity');
+			return;
+		}
+
 		console.debug(`outlet ${this.ieee}: on`);
-		this.powered = true;
 		haSend({
 			type: 'call_service',
 			domain: 'switch',
 			service: 'turn_on',
 			service_data: {
-				entity_id: this.entityId,
+				entity_id: this.entity.entityId,
 			},
 		});
 	}
 
 	off(): void {
+		if (!this.entity) {
+			this.warn('missing entity');
+			return;
+		}
+
 		console.debug(`outlet ${this.ieee}: off`);
-		this.powered = false;
 		haSend({
 			type: 'call_service',
 			domain: 'switch',
 			service: 'turn_off',
 			service_data: {
-				entity_id: this.entityId,
+				entity_id: this.entity.entityId,
 			},
 		});
 	}
-
-	onEntityState = (haState: string, haAttributes: any) => {
-		this.powered = haState === 'on';
-		this.log('at', this.powered ? 'on' : 'off');
-	};
 }

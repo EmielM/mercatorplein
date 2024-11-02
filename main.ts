@@ -1,7 +1,7 @@
 import {createConnection, createLongLivedTokenAuth, type MessageBase} from 'home-assistant-js-websocket';
 import {getDevices} from './Device';
-import {handleState} from './StatefulDevice';
 import {handleEvent} from './ZigbeeDevice';
+import {handleEntityState} from './Entity';
 
 const haToken = await Bun.file('./ha.token').text();
 const auth = createLongLivedTokenAuth('http://localhost:8123', haToken.trim());
@@ -33,7 +33,7 @@ haConnection.subscribeEvents((event: any) => {
 	const entityId = event.data.entity_id as string;
 	const newState = event.data.new_state as {state: string; attributes: any} | null;
 	if (newState) {
-		handleState(entityId, newState.state, newState.attributes);
+		handleEntityState(entityId, newState.state, newState.attributes);
 	}
 }, 'state_changed');
 
@@ -46,7 +46,7 @@ console.log(`initialized ${allDevices.length} devices`);
 
 const initialStates = await haSend({type: 'get_states'});
 for (const initialState of initialStates) {
-	handleState(initialState.entity_id, initialState.state, initialState.attributes);
+	handleEntityState(initialState.entity_id, initialState.state, initialState.attributes);
 }
 
 console.log('synced initial state');
