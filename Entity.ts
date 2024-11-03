@@ -28,7 +28,7 @@ export default class Entity<ValueType> extends Observable<ValueType> {
 			this.haState = haState;
 			this.haAttributes = haAttributes;
 			const value = mapper(haState, haAttributes);
-			console.debug(entityId, 'to', value);
+			console.debug(new Date(), entityId, 'to', JSON.stringify(value));
 			this.set(value);
 		});
 	}

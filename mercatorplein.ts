@@ -42,6 +42,12 @@ const homePresence = {
 	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) => value === 'home'),
 };
 
+// When it is super light (>= 800 lux) in our living room, don't (auto) enable lights
+const isVeryLight = new Entity(
+	'sensor.ikea_of_sweden_vallhorn_wireless_motion_sensor_illuminance',
+	(haState) => parseFloat(haState) >= 800
+);
+
 const allLights = lights({kitchen, livingRoom, bedRoom, hall, office});
 
 // Called nobodyHome (and not someoneHome), because if we don't know due to missing sensor data, we assume false
@@ -67,7 +73,7 @@ function isWeekDay() {
 }
 function isBetweenHours(min: number, max: number) {
 	const hours = new Date().getHours();
-	return hours >= min && hours <= max;
+	return hours >= min && hours < max;
 }
 
 const livingRoomScenes = new SceneController({
@@ -100,11 +106,11 @@ hall.entrySensor.onMotion(function () {
 	if (!hallLights.isOn()) {
 		hallLights.to({brightness: 0.4, temperature: 2500});
 
-		if (isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
+		if (!isVeryLight.value && isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
 			// Dimmed lights when we arrive end of day
 			livingRoomScenes.toScene(2);
 		}
-		if (isWeekDay() && isBetweenHours(17, 19) && kitchenScenes.currentSceneIndex === 0) {
+		if (!isVeryLight.value && isWeekDay() && isBetweenHours(17, 19) && kitchenScenes.currentSceneIndex === 0) {
 			// Assume we want to cook
 			kitchenScenes.toScene(1);
 		}
@@ -113,7 +119,7 @@ hall.entrySensor.onMotion(function () {
 
 const tvIsOn = new Entity('media_player.lg_webos_tv_oled55c25lb', (haState) => haState === 'on');
 tvIsOn.observe((isOn) => {
-	if (isOn) {
+	if (isOn && !isVeryLight.value) {
 		// When TV is turned on, go into
 		// TODO: this maybe a bit aggressive
 		livingRoomScenes.toScene(2);
@@ -155,7 +161,7 @@ office.button.onPressOff(() => office.deskPower.off());
 
 function asleepChanged(isAsleep: boolean | undefined) {
 	// Whenever a transition from asleep to awake between 6:00 and 10:00, enable morning lights
-	if (isAsleep === false && isBetweenHours(6, 10)) {
+	if (isAsleep === false && isBetweenHours(6, 10) && !isVeryLight.value) {
 		livingRoomScenes.toScene(2);
 		kitchenScenes.toScene(2);
 	}
