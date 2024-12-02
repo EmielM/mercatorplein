@@ -1,56 +1,71 @@
 import type {LightTarget} from './Light';
 import type Light from './Light';
 
-type Scene = LightTarget[];
-interface SceneControllerParams {
-	lights: Light[];
-	scenes: Scene[];
+interface SceneControllerParams<LightKey extends number, SceneKey extends string> {
+	name: string;
+	lights: Record<LightKey, Light>;
+	targets: Record<SceneKey, Record<LightKey, LightTarget>>;
 }
 
-export default class SceneController {
-	// Future: initialize to undefined, and auto-determine start state on initial
-	// nextScene() call with heuristic to see what scene lights are currently closest
-	// to.
-	currentSceneIndex: number = 0;
+export default class SceneController<LightKey extends number, SceneKey extends string> {
+	name: string;
+	lights: Record<LightKey, Light>;
+	scenes: Record<
+		SceneKey,
+		{
+			targets: Record<LightKey, LightTarget>;
+			nextScene: SceneKey;
+		}
+	>;
 
-	lights: Light[];
-	scenes: Scene[];
-
-	constructor(params: SceneControllerParams) {
+	constructor(params: SceneControllerParams<LightKey, SceneKey>) {
+		this.name = params.name;
 		this.lights = params.lights;
-		this.scenes = params.scenes;
-		// TODO: validate scenes
+		this.scenes = {} as any;
+		const sceneKeys = Object.keys(params.targets) as SceneKey[];
+		const nextSceneKeys = [...sceneKeys.slice(1), sceneKeys[0]];
+		for (const sceneKey of sceneKeys) {
+			const targets = params.targets[sceneKey];
+			const nextScene = nextSceneKeys.shift();
+			this.scenes[sceneKey] = {targets, nextScene: nextScene!};
+		}
+	}
+
+	getCurrentScene(): SceneKey {
+		// TODO: improve heuristic
+		let best: undefined | [number, SceneKey];
+		for (const sceneKey in this.scenes) {
+			const scene = this.scenes[sceneKey];
+			let delta = 0;
+			for (const lightKey in scene.targets) {
+				const target = scene.targets[lightKey];
+				const light = this.lights[lightKey];
+				const targetBrightness = typeof target === 'number' ? target : target.brightness;
+				delta += Math.abs(targetBrightness - (light.brightness ?? 0));
+			}
+			if (best === undefined || delta < best[0]) {
+				best = [delta, sceneKey];
+			}
+		}
+		if (!best) {
+			console.warn('no best scene');
+			return 'off' as SceneKey;
+		}
+		return best[1];
 	}
 
 	nextScene = () => {
-		this.toScene((this.currentSceneIndex + 1) % this.scenes.length);
+		const currentScene = this.getCurrentScene();
+		const nextScene = this.scenes[currentScene].nextScene;
+		this.toScene(nextScene);
 	};
 
-	// Cycles between "on" scenes, assumes scene 0 is off
-	nextOnScene = () => {
-		let sceneIndex = (this.currentSceneIndex + 1) % this.scenes.length;
-		if (sceneIndex === 0) {
-			sceneIndex++;
+	toScene(sceneKey: SceneKey) {
+		const scene = this.scenes[sceneKey];
+		console.log(this.name, 'to scene', sceneKey);
+
+		for (const lightIndex in this.lights) {
+			this.lights[lightIndex].to(scene.targets[lightIndex]);
 		}
-		this.toScene(sceneIndex);
-	};
-
-	off = () => {
-		this.toScene(0);
-	};
-
-	toScene(sceneIndex: number) {
-		const scene = this.scenes[sceneIndex];
-		if (!scene) {
-			console.warn('no such sceneIndex', sceneIndex);
-			return;
-		}
-
-		console.log('to scene', sceneIndex);
-
-		this.currentSceneIndex = sceneIndex;
-		scene.forEach((target, index) => {
-			this.lights[index].to(target);
-		});
 	}
 }

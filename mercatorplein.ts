@@ -9,6 +9,18 @@ import {haSend} from './main';
 import Observable from './Observable';
 import Entity from './Entity';
 
+process.env.TZ = 'Europe/Amsterdam';
+
+function isWeekDay() {
+	// 0 is Sunday
+	const day = new Date().getDay();
+	return day >= 1 && day <= 5;
+}
+function isBetweenHours(min: number, max: number) {
+	const hours = new Date().getHours();
+	return hours >= min && hours < max;
+}
+
 const livingRoom = {
 	curvedWallButton: new MarmitekButton('5c:02:72:ff:fe:05:0c:27'),
 	boekenkastLights: new Light('58:8e:81:ff:fe:ad:f3:14'),
@@ -42,11 +54,13 @@ const homePresence = {
 	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) => value === 'home'),
 };
 
-// When it is super light (>= 800 lux) in our living room, don't (auto) enable lights
-const isVeryLight = new Entity(
-	'sensor.ikea_of_sweden_vallhorn_wireless_motion_sensor_illuminance',
-	(haState) => parseFloat(haState) >= 800
+const brightness = new Entity('sensor.ikea_of_sweden_vallhorn_wireless_motion_sensor_illuminance', (haState) =>
+	parseFloat(haState)
 );
+
+function isDark() {
+	return brightness.value !== undefined && brightness.value < 500;
+}
 
 const allLights = lights({kitchen, livingRoom, bedRoom, hall, office});
 
@@ -61,71 +75,68 @@ homePresence.ghislaine.observe(onPresenceChange);
 
 // These track the iOS focus mode
 // - https://github.com/home-assistant/iOS/issues/1899
-const asleep = {
-	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'on'),
-	ghislaine: new Entity('binary_sensor.iphone_ghislaine_focus', (value) => value === 'on'),
-};
-
-function isWeekDay() {
-	// 0 is Sunday
-	const day = new Date().getDay();
-	return day >= 1 && day <= 5;
-}
-function isBetweenHours(min: number, max: number) {
-	const hours = new Date().getHours();
-	return hours >= min && hours < max;
-}
+// const asleep = {
+// 	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'on'),
+// 	ghislaine: new Entity('binary_sensor.iphone_ghislaine_focus', (value) => value === 'on'),
+// };
 
 const livingRoomScenes = new SceneController({
+	name: 'living',
 	lights: [livingRoom.boekenkastLights, livingRoom.tvSpot, livingRoom.artSpot, livingRoom.deskLamp],
-	scenes: [
-		[0, 0, 0, 0], // off
-		[0.8, {brightness: 0.8, temperature: 2500}, {brightness: 0.8, temperature: 2500}, 0.5], // on
-		[0.4, {brightness: 0.4, temperature: 2500}, {brightness: 0.4, temperature: 2500}, 0.25], // movie
-	],
+	targets: {
+		off: [0, 0, 0, 0],
+		dimmed: [0.4, {brightness: 0.4, temperature: 2500}, {brightness: 0.4, temperature: 2500}, 0.25],
+		bright: [0.8, {brightness: 0.8, temperature: 2500}, {brightness: 0.8, temperature: 2500}, 0.5],
+	},
 });
 livingRoom.curvedWallButton.leftButton.onPress(livingRoomScenes.nextScene);
 
 const kitchenScenes = new SceneController({
+	name: 'kitchen',
 	lights: [kitchen.counterStrip, kitchen.tableLights],
-	scenes: [
-		[0, 0], // off
-		[{brightness: 0.75, rgb: [255, 193, 141]}, 0.5], // cooking
-		[{brightness: 0.26, rgb: [255, 180, 90]}, 0.3], // eating
-	],
+	targets: {
+		off: [0, 0], // off
+		dimmed: [{brightness: 0.26, rgb: [255, 180, 90]}, 0.3], // dimmed / eating
+		bright: [{brightness: 0.75, rgb: [255, 193, 141]}, 0.5], // bright / cooking
+	},
 });
 livingRoom.curvedWallButton.rightButton.onPress(kitchenScenes.nextScene);
-kitchen.counterButton.onPressOn(kitchenScenes.nextOnScene);
-kitchen.counterButton.onPressOff(kitchenScenes.off);
+kitchen.counterButton.onPressOn(kitchenScenes.nextScene);
+kitchen.counterButton.onPressOff(() => kitchenScenes.toScene('off'));
 
 const hallLights = lights(hall);
 
 // Someone enters (or leaves) the front door
 // - TODO: somehow find a way to not trigger this when we're leaving
-hall.entrySensor.onMotion(function () {
-	if (!hallLights.isOn()) {
-		hallLights.to({brightness: 0.4, temperature: 2500});
+hall.entrySensor.onMotion(function (motion) {
+	if (!motion) {
+		hallLights.off();
+		return;
+	}
 
-		if (!isVeryLight.value && isBetweenHours(16, 21) && livingRoomScenes.currentSceneIndex === 0) {
-			// Dimmed lights when we arrive end of day
-			livingRoomScenes.toScene(2);
-		}
-		if (!isVeryLight.value && isWeekDay() && isBetweenHours(17, 19) && kitchenScenes.currentSceneIndex === 0) {
-			// Assume we want to cook
-			kitchenScenes.toScene(1);
-		}
+	if (!curtainsOpen) {
+		// Someone sleeping, do nothing (not even dim)
+		return;
+	}
+
+	hallLights.to({brightness: 0.3, temperature: 2500});
+
+	console.debug('onMotion', isDark(), livingRoomScenes.getCurrentScene(), kitchenScenes.getCurrentScene);
+	if (isDark() && livingRoomScenes.getCurrentScene() === 'off') {
+		// Dimmed lights when we arrive
+		livingRoomScenes.toScene('dimmed');
+		kitchenScenes.toScene('dimmed');
 	}
 });
 
 const tvIsOn = new Entity('media_player.lg_webos_tv_oled55c25lb', (haState) => haState === 'on');
 tvIsOn.observe((isOn) => {
-	if (isOn && !isVeryLight.value) {
+	if (isOn && isDark()) {
 		// When TV is turned on, go into
-		// TODO: this maybe a bit aggressive
-		livingRoomScenes.toScene(2);
-		if (kitchenScenes.currentSceneIndex === 1) {
+		livingRoomScenes.toScene('dimmed');
+		if (kitchenScenes.getCurrentScene() === 'bright') {
 			// If kitchen lights are bright, make less bright
-			kitchenScenes.toScene(2);
+			kitchenScenes.toScene('dimmed');
 		}
 		hallLights.off();
 	}
@@ -134,11 +145,15 @@ tvIsOn.observe((isOn) => {
 // Local state (consider: move to HA entity?)
 let curtainsOpen = false;
 
-function toggleCurtain() {
+function toggleCurtain(allAsleep: boolean) {
 	curtainsOpen = !curtainsOpen;
 	if (curtainsOpen) {
 		bedRoom.curtain.open();
 		bedRoom.antiMusquito.off();
+		if (isDark()) {
+			livingRoomScenes.toScene('dimmed');
+			kitchenScenes.toScene('dimmed');
+		}
 	} else {
 		bedRoom.curtain.close();
 		bedRoom.antiMusquito.on();
@@ -159,15 +174,16 @@ bedRoom.buttonGhis.onDoublePress(allAsleep);
 office.button.onPressOn(() => office.deskPower.on());
 office.button.onPressOff(() => office.deskPower.off());
 
-function asleepChanged(isAsleep: boolean | undefined) {
-	// Whenever a transition from asleep to awake between 6:00 and 10:00, enable morning lights
-	if (isAsleep === false && isBetweenHours(6, 10) && !isVeryLight.value) {
-		livingRoomScenes.toScene(2);
-		kitchenScenes.toScene(2);
-	}
-}
-asleep.emiel.observe(asleepChanged);
-asleep.ghislaine.observe(asleepChanged);
+// function asleepChanged(isAsleep: boolean | undefined) {
+// 	// Whenever a transition from asleep to awake between 6:00 and 10:00, enable morning lights
+// 	console.debug('asleepChanged', isAsleep, isBetweenHours(6, 10), isVeryLight.value);
+// 	if (isAsleep === false && isBetweenHours(6, 10) && !isVeryLight.value) {
+// 		livingRoomScenes.toScene(2);
+// 		kitchenScenes.toScene(2);
+// 	}
+// }
+//asleep.emiel.observe(asleepChanged);
+//asleep.ghislaine.observe(asleepChanged);
 
 nobodyHome.observe((noBodyHome) => {
 	console.log(noBodyHome ? 'no body home' : 'someone home');
@@ -175,14 +191,14 @@ nobodyHome.observe((noBodyHome) => {
 		allLights.off();
 	}
 
-	haSend({
+	/*haSend({
 		type: 'call_service',
 		domain: 'switch',
 		service: noBodyHome ? 'turn_off' : 'turn_on',
 		service_data: {
 			entity_id: 'switch.roborock_s8_maxv_ultra_do_not_disturb',
 		},
-	});
+	});*/
 });
 
 export default {livingRoom, kitchen, hall, bedRoom, office};
