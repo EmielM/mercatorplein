@@ -15,7 +15,12 @@ const haConnection = await createConnection({auth});
 console.log('connected to HA');
 
 export async function haSend(message: MessageBase): Promise<any> {
-	return await haConnection.sendMessagePromise(message);
+	try {
+		return await haConnection.sendMessagePromise(message);
+	} catch (e) {
+		console.warn('haSend failed ', message, e);
+		return;
+	}
 }
 
 haConnection.subscribeEvents((event: any) => {
@@ -25,7 +30,7 @@ haConnection.subscribeEvents((event: any) => {
 }, 'zha_event');
 
 haConnection.subscribeEvents((event: any) => {
-	if (event.data.entity_id.startsWith('sensor.')) {
+	if (event.data.entity_id.match(/^sensor.(power|energy)/)) {
 		// Lots of spam from energy sensors
 		return;
 	}
@@ -38,6 +43,14 @@ haConnection.subscribeEvents((event: any) => {
 }, 'state_changed');
 
 const mercatorplein = (await import('./mercatorplein')).default;
+
+process.addListener('uncaughtException', (e) => {
+	console.warn('uncaughtException', e);
+});
+
+process.addListener('unhandledRejection', (e) => {
+	console.warn('unhandledRejection', e);
+});
 
 const allDevices = getDevices(mercatorplein);
 await Promise.all(allDevices.map((device) => device.init()));

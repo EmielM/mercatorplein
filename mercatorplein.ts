@@ -49,9 +49,20 @@ const office = {
 	deskPower: new Outlet('28:db:a7:ff:fe:5f:d9:d7'),
 };
 
+const rockyHatch = new Light('00:12:4b:00:24:6f:37:60');
+const rockyRunning = new Entity('sensor.roborock_s8_maxv_ultra_status', (value) => {
+	console.log('rocky status=', value);
+	if (!value) {
+		return false;
+	}
+	return !['charging', 'emptying_the_bin', 'unavailable'].includes(value);
+});
+
 const homePresence = {
-	emiel: new Entity('device_tracker.emiels_iphone', (value) => value === 'home'),
-	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) => value === 'home'),
+	emiel: new Entity('device_tracker.emiels_iphone', (value) => (value === 'unknown' ? undefined : value === 'home')),
+	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) =>
+		value === 'unknown' ? undefined : value === 'home'
+	),
 };
 
 const brightness = new Entity('sensor.ikea_of_sweden_vallhorn_wireless_motion_sensor_illuminance', (haState) =>
@@ -64,10 +75,11 @@ function isDark() {
 
 const allLights = lights({kitchen, livingRoom, bedRoom, hall, office});
 
-// Called nobodyHome (and not someoneHome), because if we don't know due to missing sensor data, we assume false
-const nobodyHome = new Observable<boolean>();
+// Called everybodyAway (and not someoneHome), because if we don't know due to missing sensor data,
+// we assume at home
+const everybodyAway = new Observable<boolean>();
 function onPresenceChange() {
-	nobodyHome.set(homePresence.emiel.value === false && homePresence.ghislaine.value === false);
+	everybodyAway.set(homePresence.emiel.value === false && homePresence.ghislaine.value === false);
 }
 
 homePresence.emiel.observe(onPresenceChange);
@@ -114,7 +126,7 @@ hall.entrySensor.onMotion(function (motion) {
 		return;
 	}
 
-	if (!curtainsOpen) {
+	if (!bedRoom.curtain.isOpen()) {
 		// Someone sleeping, do nothing (not even dim)
 		return;
 	}
@@ -142,12 +154,10 @@ tvIsOn.observe((isOn) => {
 	}
 });
 
-// Local state (consider: move to HA entity?)
-let curtainsOpen = false;
-
-function toggleCurtain(allAsleep: boolean) {
-	curtainsOpen = !curtainsOpen;
-	if (curtainsOpen) {
+function toggleCurtain() {
+	const isOpen = bedRoom.curtain.isOpen();
+	console.log('toggleCurtain; wasOpen=', isOpen);
+	if (!isOpen) {
 		bedRoom.curtain.open();
 		bedRoom.antiMusquito.off();
 		if (isDark()) {
@@ -185,20 +195,30 @@ office.button.onPressOff(() => office.deskPower.off());
 //asleep.emiel.observe(asleepChanged);
 //asleep.ghislaine.observe(asleepChanged);
 
-nobodyHome.observe((noBodyHome) => {
-	console.log(noBodyHome ? 'no body home' : 'someone home');
-	if (noBodyHome) {
+everybodyAway.observe((everybodyAway) => {
+	console.log(everybodyAway ? 'everybody away' : 'someone home');
+	if (everybodyAway) {
 		allLights.off();
 	}
 
-	/*haSend({
+	haSend({
 		type: 'call_service',
 		domain: 'switch',
-		service: noBodyHome ? 'turn_off' : 'turn_on',
+		service: everybodyAway ? 'turn_off' : 'turn_on',
 		service_data: {
 			entity_id: 'switch.roborock_s8_maxv_ultra_do_not_disturb',
 		},
-	});*/
+	});
 });
 
-export default {livingRoom, kitchen, hall, bedRoom, office};
+rockyRunning.observe((isRunning) => {
+	console.log('rockyRunning=', isRunning);
+	// TODO: rockyHatch is reversed, update wiring
+	if (isRunning) {
+		rockyHatch.off();
+	} else {
+		rockyHatch.on();
+	}
+});
+
+export default {livingRoom, kitchen, rockyHatch, hall, bedRoom, office};
