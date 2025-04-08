@@ -1,11 +1,12 @@
-export type DeviceTree = {
-	[key: string]: Device | DeviceTree;
-};
+export type DeviceTree =
+	| {
+			[key: string]: Device | DeviceTree;
+	  }
+	| (Device | DeviceTree)[];
 
 export function getDevices(tree: DeviceTree): Device[] {
 	let devices: Device[] = [];
-	for (const key in tree) {
-		const device = tree[key];
+	for (const device of Object.values(tree)) {
 		if (device instanceof Device) {
 			devices = [...devices, device];
 		} else {

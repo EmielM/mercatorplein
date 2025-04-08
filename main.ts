@@ -30,7 +30,7 @@ haConnection.subscribeEvents((event: any) => {
 }, 'zha_event');
 
 haConnection.subscribeEvents((event: any) => {
-	if (event.data.entity_id.match(/^sensor.(power|energy)/)) {
+	if (event.data.entity_id.match(/^sensor.(power|energy|voltage|current)/)) {
 		// Lots of spam from energy sensors
 		return;
 	}
@@ -42,7 +42,8 @@ haConnection.subscribeEvents((event: any) => {
 	}
 }, 'state_changed');
 
-const mercatorplein = (await import('./mercatorplein')).default;
+const myHome = process.argv[2] ?? './mercatorplein';
+const mercatorplein = (await import(myHome)).default;
 
 process.addListener('uncaughtException', (e) => {
 	console.warn('uncaughtException', e);
@@ -63,5 +64,3 @@ for (const initialState of initialStates) {
 }
 
 console.log('synced initial state');
-
-export default mercatorplein;
