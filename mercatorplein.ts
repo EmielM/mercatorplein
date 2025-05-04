@@ -23,8 +23,6 @@ const kitchen = {
 	counterButton: new IkeaButton('bc:33:ac:ff:fe:0d:28:f6'),
 	counterStrip: new Light('00:17:88:01:0b:4a:33:42'),
 	tableLights: new Light('ec:1b:bd:ff:fe:ad:19:65'),
-
-	rockyHatch: new Light('00:12:4b:00:24:6f:37:60'),
 };
 const hall = {
 	entrySensor: new MotionSensor('8c:65:a3:ff:fe:3e:34:18'),
@@ -56,6 +54,8 @@ const bathroom = {
 // Unused
 // - new MarmitekButton('5c:02:72:ff:fe:05:0c:27'),
 
+// Not part of kitchen, so we are not included with lights(all)
+const rockyHatch = new Light('00:12:4b:00:24:6f:37:60');
 const rockyRunning = new Entity('sensor.roborock_s8_maxv_ultra_status', (value) => {
 	console.log('rocky status=', value);
 	if (!value) {
@@ -165,6 +165,11 @@ kitchen.counterButton.onPressOff(() => kitchenScenes.toScene('off'));
 
 const hallLights = lights(hall);
 
+// Curtain closed is a great proxy for someone asleep
+function someoneSleeping() {
+	return !bedRoom.curtain.isOpen();
+}
+
 // Someone enters (or leaves) the front door
 // - TODO: somehow find a way to not trigger this when we're leaving
 hall.entrySensor.onMotion(function (motion) {
@@ -173,8 +178,8 @@ hall.entrySensor.onMotion(function (motion) {
 		return;
 	}
 
-	if (!bedRoom.curtain.isOpen()) {
-		// Someone sleeping, do nothing (not even dim)
+	if (someoneSleeping()) {
+		// Someone sleeping: do nothing (not even dim)
 		return;
 	}
 
@@ -262,16 +267,17 @@ rockyRunning.observe((isRunning) => {
 	console.log('rockyRunning=', isRunning);
 	// TODO: rockyHatch is reversed, update wiring
 	if (isRunning) {
-		kitchen.rockyHatch.off();
+		rockyHatch.off();
 	} else {
-		kitchen.rockyHatch.on();
+		rockyHatch.on();
 	}
 });
 
 bathroom.motionSensor.onMotion((motion) => {
 	console.log('bathroom motion? ', motion);
 	if (motion) {
-		lights(bathroom.spots).to({brightness: 0.4, temperature: 2500});
+		// When someone sleeping, dim a little more
+		lights(bathroom.spots).to({brightness: someoneSleeping() ? 0.14 : 0.28, rgb: [255, 193, 132]});
 	} else {
 		lights(bathroom.spots).off();
 	}
@@ -355,4 +361,4 @@ bathroom.musicController.onSceneSelect((scene, isCurrentScene) => {
 	}
 });
 
-export default {livingRoom, bedRoom, bathroom, kitchen, hall, office};
+export default {livingRoom, bedRoom, bathroom, kitchen, hall, office, rockyHatch};
