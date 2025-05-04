@@ -9,11 +9,13 @@ import {haSend} from './main';
 import Observable from './Observable';
 import Entity from './Entity';
 import HueTapDial from './HueTapDial';
+import TapDialController from './TapDialController';
+import MusicController from './MusicController';
 
 process.env.TZ = 'Europe/Amsterdam';
 
 const livingRoom = {
-	curvedWallButton: new HueTapDial('00:17:88:01:0e:91:fa:cd'),
+	curvedWallController: new HueTapDial('00:17:88:01:0e:91:fa:cd'),
 	boekenkastLights: new Light('58:8e:81:ff:fe:ad:f3:14'),
 	tvSpot: new Light('68:0a:e2:ff:fe:c3:f5:45'),
 	artSpot: new Light('58:8e:81:ff:fe:41:12:2a'),
@@ -40,7 +42,7 @@ const office = {
 	deskPower: new Outlet('28:db:a7:ff:fe:5f:d9:d7'),
 };
 const bathroom = {
-	musicController: new HueTapDial('00:17:88:01:0e:91:9f:19'),
+	controller: new HueTapDial('00:17:88:01:0e:91:9f:19'),
 	// 5 minutes native, 10 minutes grace
 	motionSensor: new MotionSensor('ec:f6:4c:ff:fe:29:cf:49', 600),
 	spots: [
@@ -118,47 +120,11 @@ const kitchenScenes = new SceneController({
 	},
 });
 
-livingRoom.curvedWallButton.onSceneSelect((button, isCurrentScene) => {
-	if (button === 1 || button === 2) {
-		if (isCurrentScene) {
-			livingRoomScenes.toScene('off');
-		} else {
-			livingRoomScenes.toScene(button === 1 ? 'dimmed' : 'bright');
-		}
-	} else {
-		if (isCurrentScene) {
-			kitchenScenes.toScene('off');
-		} else {
-			kitchenScenes.toScene(button === 3 ? 'dimmed' : 'bright');
-		}
-	}
-});
-
-function updateVolume(entityId: string, type: 'up' | 'down') {
-	haSend({
-		type: 'call_service',
-		domain: 'media_player',
-		service: type === 'up' ? 'volume_up' : 'volume_down',
-		service_data: {
-			entity_id: entityId,
-		},
-	});
-}
-
-livingRoom.curvedWallButton.onRotate((step) => {
-	const absoluteStep = step < 0 ? -step : step;
-	const type = step < 0 ? 'down' : 'up';
-
-	if (absoluteStep > 0) {
-		updateVolume('media_player.living_room_kitchen_all', type);
-		if (absoluteStep > 25) {
-			updateVolume('media_player.living_room_kitchen_all', type);
-			if (absoluteStep > 50) {
-				updateVolume('media_player.living_room_kitchen_all', type);
-			}
-		}
-	}
-});
+new TapDialController({
+	1: livingRoomScenes,
+	2: kitchenScenes,
+	4: new MusicController('media_player.kitchen_one'),
+}).attach(livingRoom.curvedWallController);
 
 kitchen.counterButton.onPressOn(kitchenScenes.nextScene);
 kitchen.counterButton.onPressOff(() => kitchenScenes.toScene('off'));
@@ -273,92 +239,28 @@ rockyRunning.observe((isRunning) => {
 	}
 });
 
-bathroom.motionSensor.onMotion((motion) => {
-	console.log('bathroom motion? ', motion);
-	if (motion) {
-		// When someone sleeping, dim a little more
-		lights(bathroom.spots).to({brightness: someoneSleeping() ? 0.14 : 0.28, rgb: [255, 193, 132]});
-	} else {
-		lights(bathroom.spots).off();
-	}
-});
+const bathroomSpots = lights(bathroom.spots);
+const bathroomMusic = new MusicController('media_player.bathroom_one', [
+	'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:2QgnqL3g2n0CzJkaN0Y6t4',
+	'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:749lznwIW4yq56a8R9Actw',
+	'media-source://radio_browser/07eb6945-5023-461e-9064-234075472cff', // Joe
+	'media-source://radio_browser/02fab93b-c8a8-4536-bba2-3d1349318f33', // SkyRadio non-stop
+]);
 
-bathroom.musicController.onRotate((step) => {
-	const absoluteStep = step < 0 ? -step : step;
-	const type = step < 0 ? 'down' : 'up';
-
-	if (absoluteStep > 0) {
-		updateVolume('media_player.bathroom_one', type);
-		if (absoluteStep > 25) {
-			updateVolume('media_player.bathroom_one', type);
-			if (absoluteStep > 50) {
-				updateVolume('media_player.bathroom_one', type);
-			}
-		}
-	}
-});
-
-let radioIdAt = -1;
-bathroom.musicController.onSceneSelect((scene, isCurrentScene) => {
-	const entityId = 'media_player.bathroom_one';
-	if (scene === 1 || scene === 2) {
-		if (isCurrentScene) {
-			// If pressing the button again: next random song
-			haSend({
-				type: 'call_service',
-				domain: 'media_player',
-				service: 'shuffle_set',
-				service_data: {
-					entity_id: entityId,
-					shuffle: true,
-				},
-			});
-			haSend({
-				type: 'call_service',
-				domain: 'media_player',
-				service: 'media_next_track',
-				service_data: {
-					entity_id: entityId,
-				},
-			});
-			return;
-		}
-
-		// https://open.spotify.com/playlist/2QgnqL3g2n0CzJkaN0Y6t4?si=20415211e99b433d&pt=f377350da00fd46a048d7dd0fbbb1da0
-		let spotifyPlaylistId = '2QgnqL3g2n0CzJkaN0Y6t4';
-		if (scene === 2) {
-			spotifyPlaylistId = '749lznwIW4yq56a8R9Actw';
-		}
-
-		haSend({
-			type: 'call_service',
-			domain: 'media_player',
-			service: 'play_media',
-			service_data: {
-				entity_id: entityId,
-				media_content_id: `spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:${spotifyPlaylistId}`,
-				media_content_type: 'spotify://playlist',
-			},
-		});
-	} else if (scene === 4) {
-		const radioIds = [
-			'07eb6945-5023-461e-9064-234075472cff', // Joe
-			'02fab93b-c8a8-4536-bba2-3d1349318f33', // SkyRadio non-stop
-		];
-		radioIdAt = (radioIdAt + 1) % radioIds.length;
-
-		const radioId = radioIds[radioIdAt];
-		haSend({
-			type: 'call_service',
-			domain: 'media_player',
-			service: 'play_media',
-			service_data: {
-				entity_id: entityId,
-				media_content_id: `media-source://radio_browser/${radioId}`,
-				media_content_type: 'audio/aac',
-			},
-		});
-	}
-});
+new TapDialController({
+	1: {
+		on() {
+			bathroomSpots.to({brightness: someoneSleeping() ? 0.14 : 0.28, rgb: [255, 193, 132]});
+		},
+		isOn: bathroomSpots.isOn,
+		dim: bathroomSpots.dim,
+	},
+	2: bathroomMusic,
+	4: () => {
+		// Quick-off option
+		bathroomSpots.off();
+		bathroomMusic.off();
+	},
+}).attach(bathroom.controller);
 
 export default {livingRoom, bedRoom, bathroom, kitchen, hall, office, rockyHatch};

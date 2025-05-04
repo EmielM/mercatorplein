@@ -74,6 +74,30 @@ export default class Light extends ZigbeeDevice {
 	isOn(): boolean {
 		return this.brightness !== undefined && this.brightness > 0.0;
 	}
+
+	dim(step: number): void {
+		let brightness = this.brightness;
+		if (brightness === undefined) {
+			console.log('cannot dim; no current brightness');
+			return;
+		}
+
+		brightness = Math.max(0, Math.min(1, brightness + step));
+
+		if (this.rgb) {
+			this.to({
+				rgb: this.rgb,
+				brightness,
+			});
+		} else if (this.temperature) {
+			this.to({
+				temperature: this.temperature,
+				brightness,
+			});
+		} else {
+			this.to(brightness);
+		}
+	}
 }
 
 class MultiLights {
@@ -84,7 +108,13 @@ class MultiLights {
 
 	off = () => this.lights.forEach((light) => light.off());
 	on = () => this.lights.forEach((light) => light.on());
-	to = (target: LightTarget) => this.lights.forEach((light) => light.to(target));
+	to = (target: LightTarget) => {
+		this.lights.forEach((light) => light.to(target));
+	};
+	dim = (step: number) => {
+		// TODO: do nicer in case there are different current brightnesses?
+		this.lights.forEach((light) => light.dim(step));
+	};
 
 	isOn = () => this.lights.some((light) => light.isOn());
 }

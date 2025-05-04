@@ -54,6 +54,24 @@ export default class SceneController<LightKey extends number, SceneKey extends s
 		return best[1];
 	}
 
+	isOn = () => {
+		return this.getCurrentScene() !== 'off';
+	};
+
+	on = () => {
+		// Set to first non-off scene
+		const nextScene = this.scenes['off' as SceneKey].nextScene;
+		console.log(this.name, '.on: ', nextScene);
+		this.toScene(nextScene);
+	};
+
+	dim = (step: number) => {
+		for (const key in this.lights) {
+			this.lights[key].dim(step);
+		}
+		console.log('todo dim ', this.name, ' ', step);
+	};
+
 	nextScene = () => {
 		const currentScene = this.getCurrentScene();
 		const nextScene = this.scenes[currentScene].nextScene;
