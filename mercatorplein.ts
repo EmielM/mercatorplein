@@ -11,6 +11,7 @@ import Entity from './Entity';
 import HueTapDial from './HueTapDial';
 import TapDialController from './TapDialController';
 import MusicController from './MusicController';
+import {IkeaCover} from './IkeaCover';
 
 process.env.TZ = 'Europe/Amsterdam';
 
@@ -22,7 +23,6 @@ const livingRoom = {
 	deskLamp: new Light('ec:1b:bd:ff:fe:31:74:04'),
 };
 const kitchen = {
-	counterButton: new IkeaButton('bc:33:ac:ff:fe:0d:28:f6'),
 	counterStrip: new Light('00:17:88:01:0b:4a:33:42'),
 	tableLights: new Light('ec:1b:bd:ff:fe:ad:19:65'),
 };
@@ -53,6 +53,41 @@ const bathroom = {
 	],
 };
 
+const babyRoom = {
+	covers: [new IkeaCover('98:0c:33:ff:fe:60:ad:13'), new IkeaCover('98:0c:33:ff:fe:5e:74:45')],
+	coverButton: new IkeaButton('bc:02:6e:ff:fe:71:f1:81'),
+	floorLamp: new Light('ec:1b:bd:ff:fe:31:80:d7'),
+	floorLampButton: new IkeaButton('bc:33:ac:ff:fe:0d:28:f6'),
+};
+
+const babyRoomScenes = new SceneController({
+	name: 'babyRoom',
+	lights: [babyRoom.floorLamp],
+	targets: {
+		off: [0],
+		dimmed: [0.4],
+		bright: [0.9],
+	},
+});
+
+babyRoom.floorLampButton.onPressOn(() => {
+	if (babyRoomScenes.getCurrentScene() === 'dimmed') {
+		babyRoomScenes.toScene('bright');
+	} else {
+		babyRoomScenes.toScene('dimmed');
+	}
+});
+babyRoom.floorLampButton.onPressOff(() => babyRoomScenes.toScene('off'));
+
+babyRoom.coverButton.onPressUp(() => {
+	babyRoom.covers[0].open();
+	babyRoom.covers[1].open();
+});
+babyRoom.coverButton.onPressDown(() => {
+	babyRoom.covers[0].close();
+	babyRoom.covers[1].close();
+});
+
 // Unused
 // - new MarmitekButton('5c:02:72:ff:fe:05:0c:27'),
 
@@ -63,11 +98,12 @@ const rockyRunning = new Entity('sensor.roborock_s8_maxv_ultra_status', (value) 
 	if (!value) {
 		return false;
 	}
-	return !['charging', 'emptying_the_bin', 'unavailable'].includes(value);
+	// idle seems to be when disconnected
+	return !['charging', 'emptying_the_bin', 'unavailable', 'idle'].includes(value);
 });
 
 const homePresence = {
-	emiel: new Entity('device_tracker.emiels_iphone', (value) => (value === 'unknown' ? undefined : value === 'home')),
+	emiel: new Entity('device_tracker.emiel_iphone', (value) => (value === 'unknown' ? undefined : value === 'home')),
 	ghislaine: new Entity('device_tracker.iphone_ghislaine', (value) =>
 		value === 'unknown' ? undefined : value === 'home'
 	),
@@ -96,7 +132,7 @@ homePresence.ghislaine.observe(onPresenceChange);
 // These track the iOS focus mode
 // - https://github.com/home-assistant/iOS/issues/1899
 // const asleep = {
-// 	emiel: new Entity('binary_sensor.emiels_iphone_focus', (value) => value === 'on'),
+// 	emiel: new Entity('binary_sensor.emiel_iphone_focus', (value) => value === 'on'),
 // 	ghislaine: new Entity('binary_sensor.iphone_ghislaine_focus', (value) => value === 'on'),
 // };
 
@@ -125,9 +161,6 @@ new TapDialController({
 	2: kitchenScenes,
 	4: new MusicController('media_player.kitchen_one'),
 }).attach(livingRoom.curvedWallController);
-
-kitchen.counterButton.onPressOn(kitchenScenes.nextScene);
-kitchen.counterButton.onPressOff(() => kitchenScenes.toScene('off'));
 
 const hallLights = lights(hall);
 
@@ -177,6 +210,8 @@ function toggleCurtain() {
 	console.log('toggleCurtain; wasOpen=', isOpen);
 	if (!isOpen) {
 		bedRoom.curtain.open();
+		babyRoom.covers[0].open();
+		babyRoom.covers[1].open();
 		bedRoom.antiMusquito.off();
 		if (isDark()) {
 			livingRoomScenes.toScene('dimmed');
@@ -184,12 +219,16 @@ function toggleCurtain() {
 		}
 	} else {
 		bedRoom.curtain.close();
+		babyRoom.covers[0].close();
+		babyRoom.covers[1].close();
 		bedRoom.antiMusquito.on();
 	}
 }
 
 function allAsleep() {
 	bedRoom.curtain.close();
+	babyRoom.covers[0].close();
+	babyRoom.covers[1].close();
 	bedRoom.antiMusquito.on();
 	allLights.off();
 }
@@ -240,27 +279,71 @@ rockyRunning.observe((isRunning) => {
 });
 
 const bathroomSpots = lights(bathroom.spots);
-const bathroomMusic = new MusicController('media_player.bathroom_one', [
-	'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:2QgnqL3g2n0CzJkaN0Y6t4',
-	'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:749lznwIW4yq56a8R9Actw',
-	'media-source://radio_browser/07eb6945-5023-461e-9064-234075472cff', // Joe
-	'media-source://radio_browser/02fab93b-c8a8-4536-bba2-3d1349318f33', // SkyRadio non-stop
-]);
+
+function bathroomSpotsOn() {
+	// When someone sleeping, dim a little mor
+	bathroomSpots.to({brightness: someoneSleeping() ? 0.14 : 0.28, rgb: [255, 193, 132]});
+}
 
 new TapDialController({
 	1: {
-		on() {
-			bathroomSpots.to({brightness: someoneSleeping() ? 0.14 : 0.28, rgb: [255, 193, 132]});
-		},
+		on: bathroomSpotsOn,
+		off: bathroomSpots.off,
 		isOn: bathroomSpots.isOn,
 		dim: bathroomSpots.dim,
 	},
-	2: bathroomMusic,
+	2: new MusicController('media_player.bathroom_one', [
+		'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:2QgnqL3g2n0CzJkaN0Y6t4',
+		'spotify://01jr8k98yxj1yfpdazev137n59/spotify:playlist:749lznwIW4yq56a8R9Actw',
+	]),
+	3: new MusicController('media_player.bathroom_one', [
+		'media-source://radio_browser/02fab93b-c8a8-4536-bba2-3d1349318f33', // SkyRadio non-stop
+		'media-source://radio_browser/07eb6945-5023-461e-9064-234075472cff', // Joe
+	]),
 	4: () => {
 		// Quick-off option
 		bathroomSpots.off();
-		bathroomMusic.off();
+		new MusicController('media_player.bathroom_one').off();
 	},
 }).attach(bathroom.controller);
 
-export default {livingRoom, bedRoom, bathroom, kitchen, hall, office, rockyHatch};
+bathroom.motionSensor.onMotion((motion) => {
+	console.log('bathroom motion? ', motion);
+	if (motion) {
+		bathroomSpotsOn();
+	}
+});
+
+const bathroomHumid = new Entity('sensor.marmitek_sm0201_humidity', (haState) => {
+	console.log('humidity', haState);
+	return Number(haState) > 80;
+});
+
+let bathroomFanT: Timer | undefined;
+bathroomHumid.observe((isHumid) => {
+	console.log('isHumid', isHumid);
+	clearTimeout(bathroomFanT);
+	if (isHumid) {
+		setFan('High');
+	} else {
+		// Low after 5 minutes
+		// TODO: some observable composite that takes care of this
+		// TODO: in initial state, do directly?
+		bathroomFanT = setTimeout(() => setFan('Low'), 300000);
+	}
+});
+
+function setFan(preset: 'High' | 'Medium' | 'Low'): void {
+	console.log('fan to', preset);
+	haSend({
+		type: 'call_service',
+		domain: 'fan',
+		service: 'set_preset_mode',
+		service_data: {
+			entity_id: 'fan.nrg_itho_ba20_fan',
+			preset_mode: preset,
+		},
+	});
+}
+
+export default {livingRoom, bedRoom, babyRoom, bathroom, kitchen, hall, office, rockyHatch};

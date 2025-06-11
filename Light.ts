@@ -60,6 +60,7 @@ export default class Light extends ZigbeeDevice {
 		} else {
 			serviceData.brightness_pct = target * 100;
 		}
+		// console.log('TO', this.entity.entityId, serviceData);
 		haSend({
 			type: 'call_service',
 			domain: 'light',

@@ -3,6 +3,7 @@ import type HueTapDial from './HueTapDial';
 type Target = {
 	isOn(): boolean;
 	on(): void;
+	off?(): void;
 	dim(step: number): void;
 	nextScene?(): void;
 };
@@ -52,7 +53,16 @@ export default class TapDialController {
 		if (isCurrent && this.#lastPressAt > Date.now() - 5000) {
 			// Pressing same button within 5 seconds -> cycle scene
 			console.log('nextScene!');
-			target.nextScene?.();
+			if (target.nextScene) {
+				target.nextScene();
+			} else if (target.off) {
+				// If we can't cycle scenes, but can set to off: cycle between on and off
+				if (target.isOn()) {
+					target.off();
+				} else {
+					target.on();
+				}
+			}
 		} else if (!target.isOn()) {
 			console.log('ON!');
 			target.on();

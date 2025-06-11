@@ -30,6 +30,7 @@ export default class ZigbeeDevice extends Device {
 }
 
 // Finds relevant entity in HA for this device, and subscribes to updates
+// Known issue: HA sometimes has lingering "old" entities after installation and renaming. HA restart generally fixes this.
 export async function findZigbeeEntityId(entityPrefix: string, ieee: string): Promise<string | undefined> {
 	const result = (await haSend({type: 'zha/device', ieee})) as any;
 	for (const entity of result.entities as {name: string; entity_id: string}[]) {

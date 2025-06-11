@@ -18,4 +18,23 @@ export class IkeaButton extends ZigbeeDevice {
 			handler(event);
 		});
 	}
+
+	// Ikea cover button:
+	onPressUp(handler: EventHandler) {
+		addEventHandler(this.ieee, (event) => {
+			if (event?.data.command !== 'up_open') {
+				return;
+			}
+			handler(event);
+		});
+	}
+
+	onPressDown(handler: EventHandler) {
+		addEventHandler(this.ieee, (event) => {
+			if (event?.data.command !== 'down_close') {
+				return;
+			}
+			handler(event);
+		});
+	}
 }
